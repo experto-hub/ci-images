@@ -61,6 +61,8 @@ The workflow concurrency group serializes runs for the same ref. The explicit cu
 
 The workflow run summary and JSON artifact are the authoritative release records. Documentation does not duplicate live registry digests.
 
+The Node.js and Python contract tags are independent release streams, not one atomic two-image transaction. Each `:1` advances only after its own end-to-end proof. The combined release manifest is emitted only when both images in that workflow run succeed; its absence means there is no paired snapshot for that source revision.
+
 ## Local verification
 
 Use the current commit metadata so local labels match the release contract:

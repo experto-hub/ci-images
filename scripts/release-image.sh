@@ -50,6 +50,7 @@ commit_reference="${published_image}:${commit_tag}"
 contract_reference="${published_image}:${contract_tag}"
 
 docker tag "$local_image" "$commit_reference"
+echo "commit_reference_created=true" >> "$GITHUB_OUTPUT"
 docker push "$commit_reference"
 published_digest="$(resolve_registry_digest "$commit_reference")"
 
@@ -57,6 +58,7 @@ if [[ ! "$published_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "Invalid registry digest: ${published_digest}" >&2
   exit 1
 fi
+echo "digest=$published_digest" >> "$GITHUB_OUTPUT"
 
 digest_reference="${published_image}@${published_digest}"
 docker pull "$digest_reference"
@@ -95,6 +97,7 @@ if [[ "$current_main_revision" != "$source_revision" ]]; then
 fi
 
 docker tag "$commit_reference" "$contract_reference"
+echo "contract_reference_created=true" >> "$GITHUB_OUTPUT"
 docker push "$contract_reference"
 
 resolved_commit_digest="$(resolve_registry_digest "$commit_reference")"
@@ -134,7 +137,6 @@ esac
   echo "image=$published_image"
   echo "contract_tag=$contract_tag"
   echo "commit_tag=$commit_tag"
-  echo "digest=$published_digest"
   echo "runtime_version=$runtime_version"
   echo "base_digest=$base_digest"
   echo "logical_size_bytes=$logical_size"

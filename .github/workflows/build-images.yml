@@ -25,8 +25,84 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Validate ${{ matrix.display_name }}
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, proart]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: node22
+            display_name: Node.js 22
+            context: node22
+            local_name: ci-node22
+            base_digest: sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+          - profile: python312
+            display_name: Python 3.12
+            context: python312
+            local_name: ci-python312
+            base_digest: sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
+    env:
+      LOCAL_IMAGE: ${{ matrix.local_name }}:${{ github.run_id }}-${{ github.run_attempt }}
+      IMAGE_VERSION: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Derive deterministic source metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_created="$(git show --no-show-signature --format=%cI -s "$GITHUB_SHA")"
+          test -n "$image_created"
+          echo "image_created=$image_created" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        env:
+          IMAGE_CREATED: ${{ steps.metadata.outputs.image_created }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "IMAGE_SOURCE=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --build-arg "IMAGE_REVISION=${GITHUB_SHA}" \
+            --build-arg "IMAGE_CREATED=${IMAGE_CREATED}" \
+            --build-arg "IMAGE_VERSION=${IMAGE_VERSION}" \
+            --tag "$LOCAL_IMAGE" \
+            "${{ matrix.context }}"
+
+      - name: Verify local image contract
+        env:
+          IMAGE_CREATED: ${{ steps.metadata.outputs.image_created }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/verify-image-contract.sh \
+            "${{ matrix.profile }}" \
+            "$LOCAL_IMAGE" \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            "$GITHUB_SHA" \
+            "$IMAGE_CREATED" \
+            "$IMAGE_VERSION" \
+            "${{ matrix.base_digest }}"
+
+      - name: Clean up job-owned Docker state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image rm "$LOCAL_IMAGE" >/dev/null 2>&1 || true
+
   node22:
     name: Build, validate and publish Node.js 22
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, proart]
     timeout-minutes: 15
     permissions:
@@ -91,7 +167,6 @@ jobs:
 
       - name: Publish and prove registry image
         id: release
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           DOCKER_CONFIG: ${{ runner.temp }}/docker-config-node22-${{ github.run_id }}-${{ github.run_attempt }}
           GHCR_TOKEN: ${{ github.token }}
@@ -113,11 +188,23 @@ jobs:
       - name: Clean up job-owned Docker state
         if: always()
         env:
+          COMMIT_REFERENCE_CREATED: ${{ steps.release.outputs.commit_reference_created }}
+          CONTRACT_REFERENCE_CREATED: ${{ steps.release.outputs.contract_reference_created }}
           DOCKER_CONFIG: ${{ runner.temp }}/docker-config-node22-${{ github.run_id }}-${{ github.run_attempt }}
+          PUBLISHED_DIGEST: ${{ steps.release.outputs.digest }}
         shell: bash
         run: |
           set -euo pipefail
           docker image rm "$LOCAL_IMAGE" >/dev/null 2>&1 || true
+          if [[ "$COMMIT_REFERENCE_CREATED" == "true" ]]; then
+            docker image rm "${PUBLISHED_IMAGE}:sha-${GITHUB_SHA}" >/dev/null 2>&1 || true
+          fi
+          if [[ "$CONTRACT_REFERENCE_CREATED" == "true" ]]; then
+            docker image rm "${PUBLISHED_IMAGE}:${IMAGE_VERSION}" >/dev/null 2>&1 || true
+          fi
+          if [[ -n "$PUBLISHED_DIGEST" ]]; then
+            docker image rm "${PUBLISHED_IMAGE}@${PUBLISHED_DIGEST}" >/dev/null 2>&1 || true
+          fi
           case "$DOCKER_CONFIG" in
             "$RUNNER_TEMP"/*) rm -rf -- "$DOCKER_CONFIG" ;;
             *) echo "Refusing to remove Docker config outside RUNNER_TEMP" >&2; exit 1 ;;
@@ -125,6 +212,7 @@ jobs:
 
   python312:
     name: Build, validate and publish Python 3.12
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, proart]
     timeout-minutes: 15
     permissions:
@@ -189,7 +277,6 @@ jobs:
 
       - name: Publish and prove registry image
         id: release
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           DOCKER_CONFIG: ${{ runner.temp }}/docker-config-python312-${{ github.run_id }}-${{ github.run_attempt }}
           GHCR_TOKEN: ${{ github.token }}
@@ -211,11 +298,23 @@ jobs:
       - name: Clean up job-owned Docker state
         if: always()
         env:
+          COMMIT_REFERENCE_CREATED: ${{ steps.release.outputs.commit_reference_created }}
+          CONTRACT_REFERENCE_CREATED: ${{ steps.release.outputs.contract_reference_created }}
           DOCKER_CONFIG: ${{ runner.temp }}/docker-config-python312-${{ github.run_id }}-${{ github.run_attempt }}
+          PUBLISHED_DIGEST: ${{ steps.release.outputs.digest }}
         shell: bash
         run: |
           set -euo pipefail
           docker image rm "$LOCAL_IMAGE" >/dev/null 2>&1 || true
+          if [[ "$COMMIT_REFERENCE_CREATED" == "true" ]]; then
+            docker image rm "${PUBLISHED_IMAGE}:sha-${GITHUB_SHA}" >/dev/null 2>&1 || true
+          fi
+          if [[ "$CONTRACT_REFERENCE_CREATED" == "true" ]]; then
+            docker image rm "${PUBLISHED_IMAGE}:${IMAGE_VERSION}" >/dev/null 2>&1 || true
+          fi
+          if [[ -n "$PUBLISHED_DIGEST" ]]; then
+            docker image rm "${PUBLISHED_IMAGE}@${PUBLISHED_DIGEST}" >/dev/null 2>&1 || true
+          fi
           case "$DOCKER_CONFIG" in
             "$RUNNER_TEMP"/*) rm -rf -- "$DOCKER_CONFIG" ;;
             *) echo "Refusing to remove Docker config outside RUNNER_TEMP" >&2; exit 1 ;;
