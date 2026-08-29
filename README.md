@@ -1,128 +1,27 @@
 # Reusable CI images
 
-This repository owns small, reusable execution toolchains for Linux x86_64 CI jobs. It does not own application builds, dependency caches, source code or repository-specific configuration.
+This repository owns two narrow execution toolchains for trusted private Linux x86_64 CI jobs. It does not own application dependencies, dependency caches, source code, browsers, Docker access or repository-specific configuration.
 
-The first consumer analysis was derived from `JacekKardys/last-diagrams` PR #162 and revalidated against `develop` commit `514bd5b660191ab1c6e4cec2baf408b84bb015f7` after the self-hosted migration merged.
+## Image contracts
 
-## Images
+| Image | Included | Deliberately excluded | Pinned base |
+|---|---|---|---|
+| `ghcr.io/experto-hub/ci-node22` | Node.js 22, npm, Git, CA certificates, Debian shell utilities | Python, JDK, browsers, Docker CLI, application dependencies | `node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5` |
+| `ghcr.io/experto-hub/ci-python312` | Python 3.12, pip, venv, Git, CA certificates, Debian shell utilities | Node.js, JDK, browsers, Docker CLI, application dependencies | `python:3.12-slim-bookworm@sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579` |
 
-| Image | Intended consumers | Included | Deliberately excluded | Base |
-|---|---|---|---|---|
-| `ghcr.io/experto-hub/ci-node22` | Node-only build, test and static-analysis jobs | Node.js 22, npm, Git, CA certificates, standard Debian shell utilities | Python, JDK, browsers, Docker CLI, application dependencies | `node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5` |
-| `ghcr.io/experto-hub/ci-python312` | Python-only test and validation jobs | Python 3.12, pip, venv, Git, CA certificates, standard Debian shell utilities | Node.js, JDK, browsers, Docker CLI, application dependencies | `python:3.12-slim-bookworm@sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579` |
+Both images are `linux/amd64` only and use `/workspace` as their working directory. The repository intentionally does not publish `latest`.
 
-Both images currently support only Linux x86_64. They intentionally run as root because GitHub Actions mounts the workspace with runner-controlled ownership. Consumers must not mount the Docker socket into these general images.
+The images run as root. GitHub Actions controls the mounted workspace ownership, and introducing another user would add checkout and write-permission failure modes without creating a meaningful isolation boundary in this trusted private-CI model. Consumers must not mount the Docker socket into these images; access to the host daemon is effectively host-root access.
 
-### Local image characteristics
+## Release identity
 
-Measured from clean local builds on 2026-08-29. Docker reports logical (uncompressed) image size.
+Each successful `main` publication exposes three different references:
 
-| Image | Logical size | Runtime versions | Git | Smoke test |
-|---|---:|---|---|---|
-| `ci-node22` | 321,727,304 bytes (306.8 MiB) | Node.js 22.23.2, npm 10.9.8 | 2.39.5 | passed, including excluded-tool checks |
-| `ci-python312` | 208,552,705 bytes (198.9 MiB) | Python 3.12.14, pip 25.0.1, working `venv` | 2.39.5 | passed, including excluded-tool checks |
+- `:1` is a mutable moving reference for image contract line 1.
+- `:sha-<full-ci-images-commit>` is a mutable registry tag that identifies the source commit used for a release.
+- `@sha256:<registry-digest>` is the cryptographic content identity and the preferred consumer pin.
 
-Installing the exact `last-diagrams` Python requirements from the analysis ref and importing Flask, MSS, Pillow and PyYAML also passed. Those packages remain consumer dependencies and are not part of the shared image.
-
-The ProArt runner's Docker engine reported 113,501,224 bytes for the published Node.js image and 74,817,520 bytes for the published Python image. Docker storage backends account for layers differently, so both runner-reported and local logical measurements are retained instead of presenting them as directly comparable compressed sizes.
-
-### Current validated release
-
-Published and validated by workflow run `33252417011` from `ci-images` commit `6f1d2c7ca84f7a46332af347151c7120749e5719`:
-
-| Image | Immutable commit tag | Preferred digest reference |
-|---|---|---|
-| Node.js 22 | `ghcr.io/experto-hub/ci-node22:sha-6f1d2c7ca84f7a46332af347151c7120749e5719` | `ghcr.io/experto-hub/ci-node22@sha256:975c13e03137beea75edc4d326197aa90f57a73ceba18814ce6f782f2d122895` |
-| Python 3.12 | `ghcr.io/experto-hub/ci-python312:sha-6f1d2c7ca84f7a46332af347151c7120749e5719` | `ghcr.io/experto-hub/ci-python312@sha256:3e4d9e19409ad66f77a2e6b6b0b6d774d640fae274e38b8aba3206dc1e6ed157` |
-
-Both packages are private. Unauthenticated pulls correctly fail; consumers need `packages: read` and explicit package access.
-
-## Why these boundaries
-
-`last-diagrams` has many Node-only jobs, three Python-only jobs, one browser job that needs Node and one browser job that needs Node plus Python. It has no Java, Gradle, Maven or JDK job.
-
-Node and Python change independently, have independent upstream bases and are used separately by almost all jobs. Combining them would increase transfer size and attack surface for every job without removing meaningful setup from more than one consumer.
-
-The mixed `studio-browser` job is not sufficient reason for a combined image. Browser dependencies dominate its environment. The pinned upstream Playwright image is about 2.49 GB logical size and already owns the browser/system-library compatibility contract. Wrapping it would duplicate a large image and couple browser updates to this repository. The browser jobs should continue to run the trusted upstream image directly while the host workflow supplies the exact Node/Python runtimes required by the application.
-
-No Docker image is provided. `root-tests` uses a GitHub Actions PostgreSQL service, not Testcontainers. Browser jobs invoke the host daemon explicitly. Adding Docker CLI or the Docker socket to every toolchain would increase privilege and attack surface for jobs that do not need it.
-
-## `last-diagrams` CI requirements
-
-The table separates toolchain setup from dependency installation and build/test execution. `setup-*` installs runtimes; `npm ci` and `pip install` restore application dependencies and remain repository-owned.
-
-| Workflow / job | Runner at analysis ref | Current job container | Toolchains and package managers | Docker / services | Browser / native requirements | Setup versus execution |
-|---|---|---|---|---|---|---|
-| Verify / `static-contracts` | self-hosted Linux x64 proart | none | Node 22, npm | none | none | `setup-node`; `npm ci`; contract/data checks |
-| Verify / `lint-typecheck` | self-hosted Linux x64 proart | none | Node 22, npm | none | none | `setup-node`; `npm ci`; generation, lint, typecheck |
-| Verify / `root-tests` | self-hosted Linux x64 proart | none | Node 22, npm | PostgreSQL 18 Actions service | PostgreSQL client is an npm dependency | `setup-node`; `npm ci`; generation, migration, tests |
-| Verify / `runtime-core` | self-hosted Linux x64 proart | none | Python 3.12, pip, venv | none | Python packages from `tools/automation-runtime/requirements.txt` | `setup-python`; pip install; runtime and LastZ target tests |
-| Verify / `runtime-visual-calibration` | self-hosted Linux x64 proart | none | Python 3.12, pip, venv | none | capture/visual Python packages | `setup-python`; pip install; visual/calibration tests |
-| Verify / `runtime-studio-execution` | self-hosted Linux x64 proart | none | Python 3.12, pip, venv | none | capture/runtime Python packages | `setup-python`; pip install; studio/execution tests |
-| Verify / `automation-studio` | self-hosted Linux x64 proart | none | Node 22, npm | none | none | `setup-node`; `npm ci`; workspace tests |
-| Verify / `build` | self-hosted Linux x64 proart | none | Node 22, npm | none | none | `setup-node`; `npm ci`; TypeScript/Vite build |
-| Verify / `auth-browser` | self-hosted Linux x64 proart | pinned Playwright child container | Node 22, npm | host Docker daemon invokes Playwright | Chromium from `mcr.microsoft.com/playwright:v1.62.1-noble@sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac` | `setup-node`; `npm ci`; built-app auth smoke |
-| Verify / `studio-browser` | self-hosted Linux x64 proart | pinned Playwright child container | Node 22/npm plus Python 3.12/pip/venv | host Docker daemon invokes Playwright | Chromium plus capture/runtime Python packages | both setup actions; npm/pip install; Studio smoke |
-| Verify / `quality` | self-hosted Linux x64 proart | none | shell only | none | none | aggregates prior job conclusions |
-| Backup / `backup` | GitHub-hosted Ubuntu | none | Node 22 for manifest generation | Docker CLI/socket; PostgreSQL 18 child containers | GPG, OpenSSL, `gh`, core utilities | `setup-node`; dump, restore-check, encrypt, upload/prune |
-| Deploy / `deploy` | GitHub-hosted Ubuntu | none | no language runtime | none | `gh` and curl | resolve a SHA and invoke Render hook |
-| Release / `verify` | GitHub-hosted Ubuntu | none | Node 22, npm | PostgreSQL 18 Actions service | Playwright Chromium, `gh`, tar, SHA utilities | `setup-node`; npm install; verify/build/browser/package |
-| Release / `publish-and-deploy` | GitHub-hosted Ubuntu | none | Node 22, npm | Docker CLI/socket; PostgreSQL 18 child containers | GPG, OpenSSL, `gh`, curl | `setup-node`; backup, npm install, migrate, release, deploy |
-
-There are no Testcontainers jobs. PostgreSQL is either an Actions service or an explicitly invoked `postgres:18-alpine` child container. There are no Kafka, Redis or CUDA requirements in the analyzed workflows.
-
-Recent self-hosted runs show runtime setup is material: `setup-node` commonly takes roughly 25–44 seconds when four runners execute concurrently, and `setup-python` roughly 17–29 seconds. A cold earlier job recorded 67 seconds for Node setup and 112 seconds for Python setup. Dependency installation is separate and often only 1–5 seconds once the host caches are warm. The large Playwright pull is shared by all four runner processes through the single host Docker daemon after the first pull.
-
-## Local build and smoke tests
-
-Build:
-
-```bash
-docker build --tag ci-node22:local node22
-docker build --tag ci-python312:local python312
-```
-
-Smoke test Node.js:
-
-```bash
-docker run --rm ci-node22:local sh -ceu 'node --version; npm --version; git --version; test "$(uname -m)" = x86_64'
-```
-
-Smoke test Python:
-
-```bash
-docker run --rm ci-python312:local sh -ceu 'python3 --version; pip --version; git --version; python3 -m venv /tmp/venv; /tmp/venv/bin/python --version; test "$(uname -m)" = x86_64'
-```
-
-The publishing workflow performs stronger smoke tests, including major/minor version assertions and checks that excluded toolchains did not enter either image.
-
-## Publishing and versioning
-
-Pull requests build and smoke-test both images but do not publish. A change to a Dockerfile or the workflow on `main` runs on `[self-hosted, linux, x64, proart]`, builds the image, runs its smoke test, inspects it, then authenticates to GHCR with `GITHUB_TOKEN` and `packages: write`.
-
-`ci-images` is owned by `experto-hub` and uses the organization's ProArt runner scope. Image jobs therefore share the same persistent host Docker daemon and layer store without reassigning repository-scoped capacity from `last-diagrams`.
-
-Each validated `main` build publishes:
-
-- `:1` — moving image contract line;
-- `:sha-<full-ci-images-commit>` — immutable build identity;
-- a registry digest — preferred final consumer pin.
-
-The toolchain version is part of the image name (`node22`, `python312`). The tag `1` is the image contract revision and does not imply Node 1 or Python 1. A future incompatible image contract uses tag line `2`; a future runtime uses another explicit image name. No `latest` tag is published.
-
-The Dockerfiles pin upstream tags and digests. Updating a base is a deliberate Dockerfile change that rebuilds and smoke-tests the image. OCI source, revision, creation time, version and base metadata are attached after the stable OS/toolchain installation layer so per-build metadata does not invalidate package-install caching.
-
-For another private repository to consume private GHCR packages, grant that repository read access in each package's settings and add `packages: read` to its workflow permissions.
-
-`last-diagrams` is currently owned by `JacekKardys`, while these packages are owned by `experto-hub`. Grant the consumer repository explicit **Manage Actions access** on both packages. If GitHub does not offer that cross-owner repository in the package selector, transfer the consumer to `experto-hub` or make the CI images public; do not introduce a long-lived PAT merely to bypass ownership topology.
-
-## Proposed `last-diagrams` migration (not applied)
-
-Use the current immutable digests recorded under **Current validated release**.
-
-### Node-only jobs
-
-Apply this container to `static-contracts`, `lint-typecheck`, `automation-studio` and `build`, then remove their `actions/setup-node` steps. Keep checkout, `npm ci` and all repository commands.
+Example consumer configuration:
 
 ```yaml
 permissions:
@@ -130,107 +29,91 @@ permissions:
   packages: read
 
 jobs:
-  static_contracts:
+  verify:
     runs-on: [self-hosted, linux, x64, proart]
     container:
-      image: ghcr.io/experto-hub/ci-node22@sha256:975c13e03137beea75edc4d326197aa90f57a73ceba18814ce6f782f2d122895
+      image: ghcr.io/experto-hub/ci-node22@sha256:<digest-from-the-release-manifest>
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: npm ci
-      # Existing repository verification steps remain unchanged.
 ```
 
-`root-tests` can use the same image, but a job container reaches its Actions service by service name, not `127.0.0.1`. Remove `setup-node`, keep the PostgreSQL service and change only the connection host:
+The packages are private. A consumer repository needs explicit package access plus `packages: read`; do not replace that boundary with a long-lived personal access token.
 
-```yaml
-root_tests:
-  runs-on: [self-hosted, linux, x64, proart]
-  container:
-    image: ghcr.io/experto-hub/ci-node22@sha256:975c13e03137beea75edc4d326197aa90f57a73ceba18814ce6f782f2d122895
-    credentials:
-      username: ${{ github.actor }}
-      password: ${{ secrets.GITHUB_TOKEN }}
-  env:
-    TEST_DATABASE_URL: postgresql://kls:kls-test-password@postgres:5432/kls_auth_test
-    DATABASE_MIGRATION_URL: postgresql://kls:kls-test-password@postgres:5432/kls_auth_test
-  services:
-    postgres:
-      image: postgres:18-alpine
-      env:
-        POSTGRES_USER: kls
-        POSTGRES_PASSWORD: kls-test-password
-        POSTGRES_DB: kls_auth_test
-      options: >-
-        --health-cmd "pg_isready -U kls -d kls_auth_test"
-        --health-interval 5s
-        --health-timeout 5s
-        --health-retries 10
+## Build and publication model
+
+Pull requests build and verify both images without publishing. Changes merged to `main` run on `[self-hosted, linux, x64, proart]` and use run-unique local tags so the shared persistent Docker daemon cannot confuse concurrent or rerun scratch images.
+
+OCI source metadata is derived from the Git commit, including `org.opencontainers.image.created`. This makes source metadata deterministic for a revision. It does not make builds bit-identical: unpinned Debian repository contents may change between rebuilds.
+
+For each image, the workflow:
+
+1. builds a local candidate from a digest-pinned base;
+2. verifies labels, architecture, working directory, required tools and excluded toolchains;
+3. publishes the commit release tag and resolves the GHCR digest;
+4. pulls that digest back and runs the same contract verifier against it;
+5. confirms the source revision is still the current `main` head;
+6. advances `:1` and asserts that both tags resolve to the candidate digest;
+7. reports the exact image, toolchain versions, tags, digest, base digest and logical size;
+8. uploads a small JSON release manifest artifact after both images succeed.
+
+The workflow concurrency group serializes runs for the same ref. The explicit current-`main` check also prevents an old rerun from regressing the moving `:1` tag. Local scratch tags and temporary Docker authentication under `RUNNER_TEMP` are removed after every job; the shared layer cache is deliberately retained.
+
+The workflow run summary and JSON artifact are the authoritative release records. Documentation does not duplicate live registry digests.
+
+## Local verification
+
+Use the current commit metadata so local labels match the release contract:
+
+```bash
+revision="$(git rev-parse HEAD)"
+created="$(git show --no-show-signature --format=%cI -s "$revision")"
+source="https://github.com/experto-hub/ci-images"
+
+docker build \
+  --build-arg "IMAGE_SOURCE=$source" \
+  --build-arg "IMAGE_REVISION=$revision" \
+  --build-arg "IMAGE_CREATED=$created" \
+  --build-arg "IMAGE_VERSION=1" \
+  --tag ci-node22:local \
+  node22
+
+bash scripts/verify-image-contract.sh \
+  node22 ci-node22:local "$source" "$revision" "$created" 1 \
+  sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+
+docker build \
+  --build-arg "IMAGE_SOURCE=$source" \
+  --build-arg "IMAGE_REVISION=$revision" \
+  --build-arg "IMAGE_CREATED=$created" \
+  --build-arg "IMAGE_VERSION=1" \
+  --tag ci-python312:local \
+  python312
+
+bash scripts/verify-image-contract.sh \
+  python312 ci-python312:local "$source" "$revision" "$created" 1 \
+  sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
 ```
 
-The host port mapping becomes unnecessary in a job-container network. No Docker socket is required by the job container; Actions owns service lifecycle.
+The latest pre-hardening ProArt baseline (workflow run `33252417011`) reported 113,501,224 logical bytes for Node.js and 74,817,520 logical bytes for Python. Docker storage backends account for layers differently, so compare sizes only when the same engine and measurement are used. Every publication records fresh sizes and exact runtime versions.
 
-### Python-only jobs
+## Updates and supply-chain status
 
-Apply this container to `runtime-core`, `runtime-visual-calibration` and `runtime-studio-execution`. Remove `actions/setup-python`. Keep venv creation, pip installation and all tests because Python packages are application dependencies.
+Base tags and digests are updated only through reviewed Dockerfile changes that pass the normal build and contract tests. Dependabot checks both Dockerfiles and pinned GitHub Actions weekly; updates are never auto-merged.
 
-```yaml
-automation_runtime_core:
-  runs-on: [self-hosted, linux, x64, proart]
-  container:
-    image: ghcr.io/experto-hub/ci-python312@sha256:3e4d9e19409ad66f77a2e6b6b0b6d774d640fae274e38b8aba3206dc1e6ed157
-    credentials:
-      username: ${{ github.actor }}
-      password: ${{ secrets.GITHUB_TOKEN }}
-  steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - name: Install LastZ capture dependencies
-      run: |
-        python -m venv .local/automation-runtime/venv
-        .local/automation-runtime/venv/bin/python -m pip install -r tools/automation-runtime/requirements.txt
-    # Existing runtime tests remain unchanged.
-```
+| Capability | Status | Reason |
+|---|---|---|
+| GitHub-native build provenance | Deferred | Artifact attestations for a private repository require GitHub Enterprise Cloud; this organization currently uses GitHub Team. No signing keys or workaround service are introduced. |
+| OCI-attached SBOM | Deferred | Attaching and preserving a BuildKit SBOM would require changing the current daemon build/push path and exact-artifact validation model. That is not a low-complexity closeout change. |
+| Vulnerability gate | Deferred | A stable scanner/database source and an explicit severity and fix-availability policy must be agreed before making it a release gate. |
+| Automated dependency PRs | Enabled | Weekly, bounded Dependabot PRs cover the two Docker bases and pinned GitHub Actions. |
 
-### Jobs that should not use these images
+## Intentional non-goals
 
-- `auth-browser`: keep it host-executed with Node 22 and invoke the exact pinned Microsoft Playwright image. This avoids adding Docker CLI/socket/browser libraries to `ci-node22`.
-- `studio-browser`: keep it host-executed with Node 22 and Python 3.12, mounting those setup-action runtimes read-only into the exact pinned Playwright container. This is the only mixed-toolchain job.
-- `quality`: keep host-executed; it needs only the runner shell and should not pull a language image.
-- production backup/deploy/release jobs: keep host-executed for the first migration. They require combinations of `gh`, Docker, GPG, OpenSSL, curl, PostgreSQL utilities or Playwright that the two narrow images deliberately exclude. Migrate these separately only after the verification jobs establish a measured baseline.
-
-For the browser jobs, the upstream image remains:
-
-```yaml
-env:
-  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac
-```
-
-Access to `/var/run/docker.sock` is effectively host-root privilege. The current trusted private-repository assumption makes the browser-child-container approach acceptable, but the socket must remain limited to the host-executed jobs that invoke Docker. It must not be mounted into ordinary Node or Python jobs.
-
-### Migration acceptance criteria
-
-1. GHCR package access is granted to `last-diagrams`, and both digests pull on the ProArt host.
-2. One Node-only and one Python-only job first prove container startup, checkout and workspace write permissions.
-3. `root-tests` proves PostgreSQL access through hostname `postgres` without a host port mapping.
-4. All removed setup steps are limited to the runtime already present in the selected image; `npm ci`, venv creation and pip install remain.
-5. Browser and production jobs retain their existing execution boundary.
-6. Exact-head Verify finishes successfully and timing is compared with the pre-image baseline before any cache work.
-
-## Deferred optimizations
-
-- Gradle, Maven, npm, pnpm, yarn and pip cache redesign
-- shared `RUNNER_TOOL_CACHE`
-- Docker registry mirror or local/NAS registry
-- checkout mirrors or pre-cloned repositories
-- workspace sharing between runner processes
-- CUDA/GPU profiles
-- ARM/multi-architecture builds
-- a Docker-enabled or mixed Node/Python profile
-
-## Verdict
-
-The two-image platform removes repeated installation of the expensive stable Node and Python runtimes from eight Linux verification jobs while preserving repository-owned dependency installation and using the existing shared Docker daemon layer cache. It improves startup determinism without introducing a universal image, browser wrapper, Docker-in-Docker or application coupling.
-
-After integration, the next single optimization should be measuring and then addressing checkout duplication across the four runner processes. Dependency-cache redesign should follow only after the image-only baseline is recorded.
+- consumer workflow migration;
+- application dependency installation or cache redesign;
+- JDK, browsers, Docker CLI, Docker-in-Docker, build-essential or CUDA;
+- a combined Node/Python image;
+- ARM or multi-architecture publication;
+- changing the Debian base family merely to reduce size;
+- snapshot Debian repositories or full bit-for-bit reproducibility claims.
