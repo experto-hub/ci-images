@@ -75,7 +75,7 @@ main_ref_json="$(
   curl --fail --silent --show-error --location \
     --header "Accept: application/vnd.github+json" \
     --header "Authorization: Bearer ${GHCR_TOKEN}" \
-    --header "X-GitHub-Api-Version: 2022-11-28" \
+    --header "X-GitHub-Api-Version: 2026-03-10" \
     "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/ref/heads/main"
 )"
 current_main_revision="$(

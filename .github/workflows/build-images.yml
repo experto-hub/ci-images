@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-images-${{ github.workflow }}-${{ github.ref }}
+  group: ci-images-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -250,6 +250,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          for required_name in \
+            NODE_IMAGE NODE_CONTRACT_TAG NODE_COMMIT_TAG NODE_DIGEST NODE_RUNTIME_VERSION NODE_BASE_DIGEST NODE_LOGICAL_SIZE \
+            PYTHON_IMAGE PYTHON_CONTRACT_TAG PYTHON_COMMIT_TAG PYTHON_DIGEST PYTHON_RUNTIME_VERSION PYTHON_BASE_DIGEST PYTHON_LOGICAL_SIZE; do
+            if [[ -z "${!required_name:-}" ]]; then
+              echo "Required release output is missing: ${required_name}" >&2
+              exit 1
+            fi
+          done
+          [[ "$NODE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$PYTHON_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$NODE_BASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$PYTHON_BASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$NODE_LOGICAL_SIZE" =~ ^[0-9]+$ ]]
+          [[ "$PYTHON_LOGICAL_SIZE" =~ ^[0-9]+$ ]]
           manifest="${RUNNER_TEMP}/ci-images-release-${GITHUB_SHA}.json"
           printf '%s\n' \
             '{' \

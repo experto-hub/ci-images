@@ -57,7 +57,7 @@ For each image, the workflow:
 7. reports the exact image, toolchain versions, tags, digest, base digest and logical size;
 8. uploads a small JSON release manifest artifact after both images succeed.
 
-The workflow concurrency group serializes runs for the same ref. The explicit current-`main` check also prevents an old rerun from regressing the moving `:1` tag. Local scratch tags and temporary Docker authentication under `RUNNER_TEMP` are removed after every job; the shared layer cache is deliberately retained.
+The workflow concurrency group serializes runs for the same ref. The explicit current-`main` check also prevents an old run of this hardened workflow from regressing the moving `:1` tag. Local scratch tags and temporary Docker authentication under `RUNNER_TEMP` are removed after every job; the shared layer cache is deliberately retained.
 
 The workflow run summary and JSON artifact are the authoritative release records. Documentation does not duplicate live registry digests.
 
