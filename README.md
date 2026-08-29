@@ -26,7 +26,14 @@ Installing the exact `last-diagrams` Python requirements from the analysis ref a
 
 ### Current validated release
 
-The first published immutable references and measured sizes will be recorded here after the publishing workflow completes.
+Published and validated by workflow run `33247299035` from `ci-images` commit `dd0a13e97fcdb2819756a98ce400ef3101eeccd9`:
+
+| Image | Immutable commit tag | Preferred digest reference |
+|---|---|---|
+| Node.js 22 | `ghcr.io/jacekkardys/ci-node22:sha-dd0a13e97fcdb2819756a98ce400ef3101eeccd9` | `ghcr.io/jacekkardys/ci-node22@sha256:c56d483456faa28229c08d588bda41432827619bbc96ef946e1983358a773a87` |
+| Python 3.12 | `ghcr.io/jacekkardys/ci-python312:sha-dd0a13e97fcdb2819756a98ce400ef3101eeccd9` | `ghcr.io/jacekkardys/ci-python312@sha256:1d8329c0f27a9f2402d4aa07be2150547a07d9102d40e78ae9e8e19e5185db6a` |
+
+Both packages are private. Unauthenticated pulls correctly fail; consumers need `packages: read` and explicit package access.
 
 ## Why these boundaries
 
@@ -92,6 +99,8 @@ The publishing workflow performs stronger smoke tests, including major/minor ver
 
 Pull requests build and smoke-test both images but do not publish. A change to a Dockerfile or the workflow on `main` runs on `[self-hosted, linux, x64, proart]`, builds the image, runs its smoke test, inspects it, then authenticates to GHCR with `GITHUB_TOKEN` and `packages: write`.
 
+Runner registration is repository-scoped in the current personal-account setup. The four permanent ProArt runners belong to `last-diagrams` and are not visible to `ci-images`. The first release used two checksum-verified, ephemeral Linux runners on the same host; they automatically unregistered after the successful jobs. Before the next image change, either register a dedicated `ci-images` runner or move both repositories and the runners under an organization-level runner scope. Do not reassign the existing four and silently remove capacity from `last-diagrams`.
+
 Each validated `main` build publishes:
 
 - `:1` — moving image contract line;
@@ -106,7 +115,7 @@ For another private repository to consume private GHCR packages, grant that repo
 
 ## Proposed `last-diagrams` migration (not applied)
 
-Use the current immutable digests recorded under **Current validated release**. The examples below show the moving contract tag only to keep the proposal readable; replace it with `image@sha256:<digest>` in the actual migration.
+Use the current immutable digests recorded under **Current validated release**.
 
 ### Node-only jobs
 
@@ -121,7 +130,7 @@ jobs:
   static_contracts:
     runs-on: [self-hosted, linux, x64, proart]
     container:
-      image: ghcr.io/jacekkardys/ci-node22:1
+      image: ghcr.io/jacekkardys/ci-node22@sha256:c56d483456faa28229c08d588bda41432827619bbc96ef946e1983358a773a87
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -137,7 +146,7 @@ jobs:
 root_tests:
   runs-on: [self-hosted, linux, x64, proart]
   container:
-    image: ghcr.io/jacekkardys/ci-node22:1
+    image: ghcr.io/jacekkardys/ci-node22@sha256:c56d483456faa28229c08d588bda41432827619bbc96ef946e1983358a773a87
     credentials:
       username: ${{ github.actor }}
       password: ${{ secrets.GITHUB_TOKEN }}
@@ -168,7 +177,7 @@ Apply this container to `runtime-core`, `runtime-visual-calibration` and `runtim
 automation_runtime_core:
   runs-on: [self-hosted, linux, x64, proart]
   container:
-    image: ghcr.io/jacekkardys/ci-python312:1
+    image: ghcr.io/jacekkardys/ci-python312@sha256:1d8329c0f27a9f2402d4aa07be2150547a07d9102d40e78ae9e8e19e5185db6a
     credentials:
       username: ${{ github.actor }}
       password: ${{ secrets.GITHUB_TOKEN }}
