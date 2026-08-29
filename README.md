@@ -2,7 +2,7 @@
 
 This repository owns small, reusable execution toolchains for Linux x86_64 CI jobs. It does not own application builds, dependency caches, source code or repository-specific configuration.
 
-The first consumer analysis is based on `JacekKardys/last-diagrams` at `feature/self-hosted-proart-runner` commit `bc41b7f69755cfd7eda424ca77443c71fd0cea93` (PR #162), based on `develop` commit `7d96ad5f1ef5097d297587763796c0a7fc78ea15`.
+The first consumer analysis was derived from `JacekKardys/last-diagrams` PR #162 and revalidated against `develop` commit `514bd5b660191ab1c6e4cec2baf408b84bb015f7` after the self-hosted migration merged.
 
 ## Images
 
@@ -63,7 +63,6 @@ The table separates toolchain setup from dependency installation and build/test 
 | Verify / `build` | self-hosted Linux x64 proart | none | Node 22, npm | none | none | `setup-node`; `npm ci`; TypeScript/Vite build |
 | Verify / `auth-browser` | self-hosted Linux x64 proart | pinned Playwright child container | Node 22, npm | host Docker daemon invokes Playwright | Chromium from `mcr.microsoft.com/playwright:v1.62.1-noble@sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac` | `setup-node`; `npm ci`; built-app auth smoke |
 | Verify / `studio-browser` | self-hosted Linux x64 proart | pinned Playwright child container | Node 22/npm plus Python 3.12/pip/venv | host Docker daemon invokes Playwright | Chromium plus capture/runtime Python packages | both setup actions; npm/pip install; Studio smoke |
-| Verify / `windows-capture-storage` | GitHub-hosted Windows | none | Python 3.12, pip | none | `pywin32` is Windows-only | `setup-python`; pip install; focused Windows tests |
 | Verify / `quality` | self-hosted Linux x64 proart | none | shell only | none | none | aggregates prior job conclusions |
 | Backup / `backup` | GitHub-hosted Ubuntu | none | Node 22 for manifest generation | Docker CLI/socket; PostgreSQL 18 child containers | GPG, OpenSSL, `gh`, core utilities | `setup-node`; dump, restore-check, encrypt, upload/prune |
 | Deploy / `deploy` | GitHub-hosted Ubuntu | none | no language runtime | none | `gh` and curl | resolve a SHA and invoke Render hook |
@@ -115,6 +114,8 @@ The Dockerfiles pin upstream tags and digests. Updating a base is a deliberate D
 
 For another private repository to consume private GHCR packages, grant that repository read access in each package's settings and add `packages: read` to its workflow permissions.
 
+`last-diagrams` is currently owned by `JacekKardys`, while these packages are owned by `experto-hub`. Grant the consumer repository explicit **Manage Actions access** on both packages. If GitHub does not offer that cross-owner repository in the package selector, transfer the consumer to `experto-hub` or make the CI images public; do not introduce a long-lived PAT merely to bypass ownership topology.
+
 ## Proposed `last-diagrams` migration (not applied)
 
 Use the current immutable digests recorded under **Current validated release**.
@@ -137,7 +138,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: npm ci
       # Existing repository verification steps remain unchanged.
 ```
@@ -184,7 +185,7 @@ automation_runtime_core:
       username: ${{ github.actor }}
       password: ${{ secrets.GITHUB_TOKEN }}
   steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install LastZ capture dependencies
       run: |
         python -m venv .local/automation-runtime/venv
@@ -196,7 +197,6 @@ automation_runtime_core:
 
 - `auth-browser`: keep it host-executed with Node 22 and invoke the exact pinned Microsoft Playwright image. This avoids adding Docker CLI/socket/browser libraries to `ci-node22`.
 - `studio-browser`: keep it host-executed with Node 22 and Python 3.12, mounting those setup-action runtimes read-only into the exact pinned Playwright container. This is the only mixed-toolchain job.
-- `windows-capture-storage`: keep GitHub-hosted Windows and `setup-python`; Linux containers cannot satisfy `pywin32` or the Windows behavior contract.
 - `quality`: keep host-executed; it needs only the runner shell and should not pull a language image.
 - production backup/deploy/release jobs: keep host-executed for the first migration. They require combinations of `gh`, Docker, GPG, OpenSSL, curl, PostgreSQL utilities or Playwright that the two narrow images deliberately exclude. Migrate these separately only after the verification jobs establish a measured baseline.
 
@@ -215,7 +215,7 @@ Access to `/var/run/docker.sock` is effectively host-root privilege. The current
 2. One Node-only and one Python-only job first prove container startup, checkout and workspace write permissions.
 3. `root-tests` proves PostgreSQL access through hostname `postgres` without a host port mapping.
 4. All removed setup steps are limited to the runtime already present in the selected image; `npm ci`, venv creation and pip install remain.
-5. Browser, Windows and production jobs retain their existing execution boundary.
+5. Browser and production jobs retain their existing execution boundary.
 6. Exact-head Verify finishes successfully and timing is compared with the pre-image baseline before any cache work.
 
 ## Deferred optimizations
@@ -231,6 +231,6 @@ Access to `/var/run/docker.sock` is effectively host-root privilege. The current
 
 ## Verdict
 
-The two-image platform removes repeated installation of the expensive stable Node and Python runtimes from ten Linux verification jobs while preserving repository-owned dependency installation and using the existing shared Docker daemon layer cache. It improves startup determinism without introducing a universal image, browser wrapper, Docker-in-Docker or application coupling.
+The two-image platform removes repeated installation of the expensive stable Node and Python runtimes from eight Linux verification jobs while preserving repository-owned dependency installation and using the existing shared Docker daemon layer cache. It improves startup determinism without introducing a universal image, browser wrapper, Docker-in-Docker or application coupling.
 
 After integration, the next single optimization should be measuring and then addressing checkout duplication across the four runner processes. Dependency-cache redesign should follow only after the image-only baseline is recorded.
