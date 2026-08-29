@@ -24,14 +24,16 @@ Measured from clean local builds on 2026-08-29. Docker reports logical (uncompre
 
 Installing the exact `last-diagrams` Python requirements from the analysis ref and importing Flask, MSS, Pillow and PyYAML also passed. Those packages remain consumer dependencies and are not part of the shared image.
 
+The ProArt runner's Docker engine reported 113,501,224 bytes for the published Node.js image and 74,817,520 bytes for the published Python image. Docker storage backends account for layers differently, so both runner-reported and local logical measurements are retained instead of presenting them as directly comparable compressed sizes.
+
 ### Current validated release
 
-Published and validated by workflow run `33247299035` from `ci-images` commit `dd0a13e97fcdb2819756a98ce400ef3101eeccd9`:
+Published and validated by workflow run `33252417011` from `ci-images` commit `6f1d2c7ca84f7a46332af347151c7120749e5719`:
 
 | Image | Immutable commit tag | Preferred digest reference |
 |---|---|---|
-| Node.js 22 | `ghcr.io/jacekkardys/ci-node22:sha-dd0a13e97fcdb2819756a98ce400ef3101eeccd9` | `ghcr.io/jacekkardys/ci-node22@sha256:c56d483456faa28229c08d588bda41432827619bbc96ef946e1983358a773a87` |
-| Python 3.12 | `ghcr.io/jacekkardys/ci-python312:sha-dd0a13e97fcdb2819756a98ce400ef3101eeccd9` | `ghcr.io/jacekkardys/ci-python312@sha256:1d8329c0f27a9f2402d4aa07be2150547a07d9102d40e78ae9e8e19e5185db6a` |
+| Node.js 22 | `ghcr.io/experto-hub/ci-node22:sha-6f1d2c7ca84f7a46332af347151c7120749e5719` | `ghcr.io/experto-hub/ci-node22@sha256:975c13e03137beea75edc4d326197aa90f57a73ceba18814ce6f782f2d122895` |
+| Python 3.12 | `ghcr.io/experto-hub/ci-python312:sha-6f1d2c7ca84f7a46332af347151c7120749e5719` | `ghcr.io/experto-hub/ci-python312@sha256:3e4d9e19409ad66f77a2e6b6b0b6d774d640fae274e38b8aba3206dc1e6ed157` |
 
 Both packages are private. Unauthenticated pulls correctly fail; consumers need `packages: read` and explicit package access.
 
@@ -130,7 +132,7 @@ jobs:
   static_contracts:
     runs-on: [self-hosted, linux, x64, proart]
     container:
-      image: ghcr.io/jacekkardys/ci-node22@sha256:c56d483456faa28229c08d588bda41432827619bbc96ef946e1983358a773a87
+      image: ghcr.io/experto-hub/ci-node22@sha256:975c13e03137beea75edc4d326197aa90f57a73ceba18814ce6f782f2d122895
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -146,7 +148,7 @@ jobs:
 root_tests:
   runs-on: [self-hosted, linux, x64, proart]
   container:
-    image: ghcr.io/jacekkardys/ci-node22@sha256:c56d483456faa28229c08d588bda41432827619bbc96ef946e1983358a773a87
+    image: ghcr.io/experto-hub/ci-node22@sha256:975c13e03137beea75edc4d326197aa90f57a73ceba18814ce6f782f2d122895
     credentials:
       username: ${{ github.actor }}
       password: ${{ secrets.GITHUB_TOKEN }}
@@ -177,7 +179,7 @@ Apply this container to `runtime-core`, `runtime-visual-calibration` and `runtim
 automation_runtime_core:
   runs-on: [self-hosted, linux, x64, proart]
   container:
-    image: ghcr.io/jacekkardys/ci-python312@sha256:1d8329c0f27a9f2402d4aa07be2150547a07d9102d40e78ae9e8e19e5185db6a
+    image: ghcr.io/experto-hub/ci-python312@sha256:3e4d9e19409ad66f77a2e6b6b0b6d774d640fae274e38b8aba3206dc1e6ed157
     credentials:
       username: ${{ github.actor }}
       password: ${{ secrets.GITHUB_TOKEN }}
