@@ -8,8 +8,8 @@ The first consumer analysis is based on `JacekKardys/last-diagrams` at `feature/
 
 | Image | Intended consumers | Included | Deliberately excluded | Base |
 |---|---|---|---|---|
-| `ghcr.io/jacekkardys/ci-node22` | Node-only build, test and static-analysis jobs | Node.js 22, npm, Git, CA certificates, standard Debian shell utilities | Python, JDK, browsers, Docker CLI, application dependencies | `node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5` |
-| `ghcr.io/jacekkardys/ci-python312` | Python-only test and validation jobs | Python 3.12, pip, venv, Git, CA certificates, standard Debian shell utilities | Node.js, JDK, browsers, Docker CLI, application dependencies | `python:3.12-slim-bookworm@sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579` |
+| `ghcr.io/experto-hub/ci-node22` | Node-only build, test and static-analysis jobs | Node.js 22, npm, Git, CA certificates, standard Debian shell utilities | Python, JDK, browsers, Docker CLI, application dependencies | `node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5` |
+| `ghcr.io/experto-hub/ci-python312` | Python-only test and validation jobs | Python 3.12, pip, venv, Git, CA certificates, standard Debian shell utilities | Node.js, JDK, browsers, Docker CLI, application dependencies | `python:3.12-slim-bookworm@sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579` |
 
 Both images currently support only Linux x86_64. They intentionally run as root because GitHub Actions mounts the workspace with runner-controlled ownership. Consumers must not mount the Docker socket into these general images.
 
@@ -99,7 +99,7 @@ The publishing workflow performs stronger smoke tests, including major/minor ver
 
 Pull requests build and smoke-test both images but do not publish. A change to a Dockerfile or the workflow on `main` runs on `[self-hosted, linux, x64, proart]`, builds the image, runs its smoke test, inspects it, then authenticates to GHCR with `GITHUB_TOKEN` and `packages: write`.
 
-Runner registration is repository-scoped in the current personal-account setup. The four permanent ProArt runners belong to `last-diagrams` and are not visible to `ci-images`. The first release used two checksum-verified, ephemeral Linux runners on the same host; they automatically unregistered after the successful jobs. Before the next image change, either register a dedicated `ci-images` runner or move both repositories and the runners under an organization-level runner scope. Do not reassign the existing four and silently remove capacity from `last-diagrams`.
+`ci-images` is owned by `experto-hub` and uses the organization's ProArt runner scope. Image jobs therefore share the same persistent host Docker daemon and layer store without reassigning repository-scoped capacity from `last-diagrams`.
 
 Each validated `main` build publishes:
 

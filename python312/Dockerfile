@@ -8,7 +8,7 @@ RUN apt-get update \
 
 WORKDIR /workspace
 
-ARG IMAGE_SOURCE="https://github.com/JacekKardys/ci-images"
+ARG IMAGE_SOURCE="https://github.com/experto-hub/ci-images"
 ARG IMAGE_REVISION="local"
 ARG IMAGE_CREATED="unknown"
 ARG IMAGE_VERSION="1"
