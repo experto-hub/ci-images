@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 7 ]]; then
-  echo "Usage: $0 <node22|python312|java21|java25> <image> <source> <revision> <created> <version> <base-digest>" >&2
+  echo "Usage: $0 <node22|python312|python314|java21|java25> <image> <source> <revision> <created> <version> <base-digest>" >&2
   exit 2
 fi
 
@@ -58,17 +58,26 @@ case "$profile" in
       ! command -v docker
     '
     ;;
-  python312)
+  python312 | python314)
+    python_feature="${profile#python}"
+    python_feature="${python_feature:0:1}.${python_feature:1}"
+    assert_equal org.opencontainers.image.title \
+      "Reusable Python ${python_feature} CI toolchain" \
+      "$(label_value org.opencontainers.image.title)"
+    assert_equal org.opencontainers.image.description \
+      "Python ${python_feature}, pip, venv, Git and CA certificates for Linux x86_64 CI jobs" \
+      "$(label_value org.opencontainers.image.description)"
     assert_equal org.opencontainers.image.base.name \
-      "docker.io/library/python:3.12-slim-bookworm@${expected_base_digest}" \
+      "docker.io/library/python:${python_feature}-slim-bookworm@${expected_base_digest}" \
       "$(label_value org.opencontainers.image.base.name)"
     docker run --rm "$image" sh -ceu '
+      expected_feature="$1"
       venv_dir="$(mktemp -d)"
       trap '\''rm -rf "$venv_dir"'\'' EXIT
       python3 --version
       pip --version
       git --version
-      test "$(python3 -c "import sys; print(f'\''{sys.version_info.major}.{sys.version_info.minor}'\'')")" = "3.12"
+      test "$(python3 -c "import sys; print(f'\''{sys.version_info.major}.{sys.version_info.minor}'\'')")" = "$expected_feature"
       python3 -m venv "$venv_dir"
       "$venv_dir/bin/python" --version
       test "$(uname -m)" = "x86_64"
@@ -77,7 +86,7 @@ case "$profile" in
       ! command -v node
       ! command -v java
       ! command -v docker
-    '
+    ' -- "$python_feature"
     ;;
   java21 | java25)
     java_feature="${profile#java}"

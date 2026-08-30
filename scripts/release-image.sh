@@ -121,7 +121,7 @@ case "$profile" in
     git_version="$(docker run --rm "$digest_reference" sh -ceu "git --version | awk '{print \$3}'")"
     toolchain="Node.js ${runtime_version}, npm ${npm_version}, Git ${git_version}"
     ;;
-  python312)
+  python312 | python314)
     runtime_version="$(docker run --rm "$digest_reference" python3 -c 'import platform; print(platform.python_version())')"
     pip_version="$(docker run --rm "$digest_reference" sh -ceu "pip --version | awk '{print \$2}'")"
     git_version="$(docker run --rm "$digest_reference" sh -ceu "git --version | awk '{print \$3}'")"

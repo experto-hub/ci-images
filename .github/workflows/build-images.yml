@@ -6,6 +6,7 @@ on:
       - .github/workflows/build-images.yml
       - node22/**
       - python312/**
+      - python314/**
       - java21/**
       - java25/**
       - scripts/**
@@ -16,6 +17,7 @@ on:
       - .github/workflows/build-images.yml
       - node22/**
       - python312/**
+      - python314/**
       - java21/**
       - java25/**
       - scripts/**
@@ -50,6 +52,11 @@ jobs:
             context: python312
             local_name: ci-python312
             base_digest: sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
+          - profile: python314
+            display_name: Python 3.14
+            context: python314
+            local_name: ci-python314
+            base_digest: sha256:416f0db2a2b561945630cef9877a7ea0581b27449eb9fd9df42f03e1b74b5b63
           - profile: java21
             display_name: Java 21
             context: java21
@@ -147,6 +154,12 @@ jobs:
             local_name: ci-python312
             published_image: ghcr.io/experto-hub/ci-python312
             base_digest: sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
+          - profile: python314
+            display_name: Python 3.14
+            context: python314
+            local_name: ci-python314
+            published_image: ghcr.io/experto-hub/ci-python314
+            base_digest: sha256:416f0db2a2b561945630cef9877a7ea0581b27449eb9fd9df42f03e1b74b5b63
           - profile: java21
             display_name: Java 21
             context: java21
