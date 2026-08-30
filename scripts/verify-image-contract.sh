@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 7 ]]; then
-  echo "Usage: $0 <node22|python312> <image> <source> <revision> <created> <version> <base-digest>" >&2
+  echo "Usage: $0 <node22|python312|java21|java25> <image> <source> <revision> <created> <version> <base-digest>" >&2
   exit 2
 fi
 
@@ -78,6 +78,59 @@ case "$profile" in
       ! command -v java
       ! command -v docker
     '
+    ;;
+  java21 | java25)
+    java_feature="${profile#java}"
+    assert_equal org.opencontainers.image.title \
+      "Reusable Java ${java_feature} CI toolchain" \
+      "$(label_value org.opencontainers.image.title)"
+    assert_equal org.opencontainers.image.description \
+      "Eclipse Temurin JDK ${java_feature}, Git, CA certificates, curl, unzip and Ubuntu shell utilities for Linux x86_64 CI jobs" \
+      "$(label_value org.opencontainers.image.description)"
+    assert_equal org.opencontainers.image.base.name \
+      "docker.io/library/eclipse-temurin:${java_feature}-jdk-noble@${expected_base_digest}" \
+      "$(label_value org.opencontainers.image.base.name)"
+    docker run --rm "$image" sh -ceu '
+      expected_feature="$1"
+
+      test -n "${JAVA_HOME:-}"
+      test -d "$JAVA_HOME"
+      test -x "$JAVA_HOME/bin/java"
+      test -x "$JAVA_HOME/bin/javac"
+      test "$(readlink -f "$(command -v java)")" = "$(readlink -f "$JAVA_HOME/bin/java")"
+      test "$(readlink -f "$(command -v javac)")" = "$(readlink -f "$JAVA_HOME/bin/javac")"
+
+      java_feature="$(
+        java -XshowSettings:properties -version 2>&1 |
+          awk -F" = " "/^[[:space:]]*java.specification.version = / { print \$2; exit }"
+      )"
+      javac_version="$(javac -version 2>&1 | awk "{ print \$2 }")"
+      javac_feature="${javac_version%%.*}"
+      test "$java_feature" = "$expected_feature"
+      test "$javac_feature" = "$expected_feature"
+
+      java -version
+      javac -version
+      git --version
+      curl --version | head -n 1
+      unzip -v | head -n 1
+
+      for required_command in bash git curl unzip sed awk grep tar gzip mktemp uname id; do
+        command -v "$required_command" >/dev/null
+      done
+      test "$(id -u)" = "0"
+      test "$(uname -m)" = "x86_64"
+      test "$(pwd)" = "/workspace"
+      test -s /etc/ssl/certs/ca-certificates.crt
+      command -v update-ca-certificates >/dev/null
+
+      for excluded_command in mvn gradle node npm python python3 docker; do
+        if command -v "$excluded_command" >/dev/null 2>&1; then
+          echo "Excluded command is present: ${excluded_command}" >&2
+          exit 1
+        fi
+      done
+    ' -- "$java_feature"
     ;;
   *)
     echo "Unsupported image profile: $profile" >&2

@@ -127,6 +127,17 @@ case "$profile" in
     git_version="$(docker run --rm "$digest_reference" sh -ceu "git --version | awk '{print \$3}'")"
     toolchain="Python ${runtime_version}, pip ${pip_version}, Git ${git_version}"
     ;;
+  java21 | java25)
+    runtime_version="$(
+      docker run --rm "$digest_reference" sh -ceu \
+        "java -XshowSettings:properties -version 2>&1 | awk -F' = ' '/^[[:space:]]*java.version = / { print \$2; exit }'"
+    )"
+    javac_version="$(docker run --rm "$digest_reference" sh -ceu "javac -version 2>&1 | awk '{print \$2}'")"
+    git_version="$(docker run --rm "$digest_reference" sh -ceu "git --version | awk '{print \$3}'")"
+    curl_version="$(docker run --rm "$digest_reference" sh -ceu "curl --version | awk 'NR == 1 {print \$2}'")"
+    unzip_version="$(docker run --rm "$digest_reference" sh -ceu "unzip -v | awk 'NR == 1 {print \$2}'")"
+    toolchain="Java ${runtime_version}, javac ${javac_version}, Git ${git_version}, curl ${curl_version}, unzip ${unzip_version}"
+    ;;
   *)
     echo "Unsupported image profile: $profile" >&2
     exit 2
