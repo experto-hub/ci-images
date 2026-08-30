@@ -1,0 +1,36 @@
+{
+  "name": "ci-images-openhands",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "OPENHANDS_UID": "10001",
+      "WORKSPACE_GID": "1000"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/java:1.8.2": {
+      "version": "25.0.4+1-ms",
+      "installMaven": "true",
+      "mavenVersion": "3.9.16",
+      "installGradle": "false"
+    },
+    "ghcr.io/devcontainers/features/node:1.7.1": {
+      "version": "24.20.0",
+      "nvmVersion": "0.40.7",
+      "npmVersion": "11.19.0",
+      "pnpmVersion": "none",
+      "nodeGypDependencies": "false"
+    }
+  },
+  "containerUser": "openhands",
+  "remoteUser": "openhands",
+  "updateRemoteUserUID": false,
+  "workspaceMount": "source=${localEnv:OH_WORKSPACE_PATH},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "mounts": [
+    "source=${localEnv:OH_MAVEN_CACHE},target=/home/openhands/.m2,type=bind",
+    "source=${localEnv:OH_NPM_CACHE},target=/home/openhands/.npm,type=bind"
+  ],
+  "postCreateCommand": "git config --global --add safe.directory '${containerWorkspaceFolder}'",
+  "customizations": {}
+}
