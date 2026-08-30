@@ -1,1 +1,3 @@
 .idea/
+.devcontainer/.devpod-openhands.json
+.devcontainer/.devpod-internal/
