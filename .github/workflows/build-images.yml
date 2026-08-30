@@ -6,6 +6,8 @@ on:
       - .github/workflows/build-images.yml
       - node22/**
       - python312/**
+      - java21/**
+      - java25/**
       - scripts/**
   push:
     branches:
@@ -14,6 +16,8 @@ on:
       - .github/workflows/build-images.yml
       - node22/**
       - python312/**
+      - java21/**
+      - java25/**
       - scripts/**
   workflow_dispatch:
 
@@ -46,6 +50,16 @@ jobs:
             context: python312
             local_name: ci-python312
             base_digest: sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
+          - profile: java21
+            display_name: Java 21
+            context: java21
+            local_name: ci-java21
+            base_digest: sha256:75ce56643243c3db632be2ef259625fb42ee3be1334389659f7a1a61acb78783
+          - profile: java25
+            display_name: Java 25
+            context: java25
+            local_name: ci-java25
+            base_digest: sha256:534968c051301957beae735e7ba1db54d99ddecf08746d3b9d4f318cc132dbc3
     env:
       LOCAL_IMAGE: ${{ matrix.local_name }}:${{ github.run_id }}-${{ github.run_attempt }}
       IMAGE_VERSION: "1"
@@ -93,6 +107,15 @@ jobs:
             "$IMAGE_VERSION" \
             "${{ matrix.base_digest }}"
 
+      - name: Verify Maven Wrapper bootstrap
+        if: startsWith(matrix.profile, 'java')
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/verify-maven-wrapper.sh \
+            "$LOCAL_IMAGE" \
+            "${{ matrix.profile == 'java21' && '21' || '25' }}"
+
       - name: Clean up job-owned Docker state
         if: always()
         shell: bash
@@ -100,26 +123,46 @@ jobs:
           set -euo pipefail
           docker image rm "$LOCAL_IMAGE" >/dev/null 2>&1 || true
 
-  node22:
-    name: Build, validate and publish Node.js 22
+  publish:
+    name: Build, validate and publish ${{ matrix.display_name }}
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, proart]
     timeout-minutes: 15
     permissions:
       contents: read
       packages: write
-    outputs:
-      image: ${{ steps.release.outputs.image }}
-      contract_tag: ${{ steps.release.outputs.contract_tag }}
-      commit_tag: ${{ steps.release.outputs.commit_tag }}
-      digest: ${{ steps.release.outputs.digest }}
-      runtime_version: ${{ steps.release.outputs.runtime_version }}
-      base_digest: ${{ steps.release.outputs.base_digest }}
-      logical_size_bytes: ${{ steps.release.outputs.logical_size_bytes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: node22
+            display_name: Node.js 22
+            context: node22
+            local_name: ci-node22
+            published_image: ghcr.io/experto-hub/ci-node22
+            base_digest: sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+          - profile: python312
+            display_name: Python 3.12
+            context: python312
+            local_name: ci-python312
+            published_image: ghcr.io/experto-hub/ci-python312
+            base_digest: sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
+          - profile: java21
+            display_name: Java 21
+            context: java21
+            local_name: ci-java21
+            published_image: ghcr.io/experto-hub/ci-java21
+            base_digest: sha256:75ce56643243c3db632be2ef259625fb42ee3be1334389659f7a1a61acb78783
+          - profile: java25
+            display_name: Java 25
+            context: java25
+            local_name: ci-java25
+            published_image: ghcr.io/experto-hub/ci-java25
+            base_digest: sha256:534968c051301957beae735e7ba1db54d99ddecf08746d3b9d4f318cc132dbc3
     env:
-      LOCAL_IMAGE: ci-node22:${{ github.run_id }}-${{ github.run_attempt }}
-      PUBLISHED_IMAGE: ghcr.io/experto-hub/ci-node22
-      BASE_DIGEST: sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+      LOCAL_IMAGE: ${{ matrix.local_name }}:${{ github.run_id }}-${{ github.run_attempt }}
+      PUBLISHED_IMAGE: ${{ matrix.published_image }}
+      BASE_DIGEST: ${{ matrix.base_digest }}
       IMAGE_VERSION: "1"
     steps:
       - name: Checkout
@@ -148,7 +191,7 @@ jobs:
             --build-arg "IMAGE_CREATED=${IMAGE_CREATED}" \
             --build-arg "IMAGE_VERSION=${IMAGE_VERSION}" \
             --tag "$LOCAL_IMAGE" \
-            node22
+            "${{ matrix.context }}"
 
       - name: Verify local image contract
         env:
@@ -157,7 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/verify-image-contract.sh \
-            node22 \
+            "${{ matrix.profile }}" \
             "$LOCAL_IMAGE" \
             "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             "$GITHUB_SHA" \
@@ -165,18 +208,27 @@ jobs:
             "$IMAGE_VERSION" \
             "$BASE_DIGEST"
 
+      - name: Verify Maven Wrapper bootstrap
+        if: startsWith(matrix.profile, 'java')
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/verify-maven-wrapper.sh \
+            "$LOCAL_IMAGE" \
+            "${{ matrix.profile == 'java21' && '21' || '25' }}"
+
       - name: Publish and prove registry image
         id: release
         env:
-          DOCKER_CONFIG: ${{ runner.temp }}/docker-config-node22-${{ github.run_id }}-${{ github.run_attempt }}
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
           GHCR_TOKEN: ${{ github.token }}
           IMAGE_CREATED: ${{ steps.metadata.outputs.image_created }}
         shell: bash
         run: |
           set -euo pipefail
           bash scripts/release-image.sh \
-            node22 \
-            "Node.js 22" \
+            "${{ matrix.profile }}" \
+            "${{ matrix.display_name }}" \
             "$LOCAL_IMAGE" \
             "$PUBLISHED_IMAGE" \
             "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
@@ -185,122 +237,47 @@ jobs:
             "$IMAGE_VERSION" \
             "$BASE_DIGEST"
 
-      - name: Clean up job-owned Docker state
-        if: always()
+      - name: Create release record
+        id: record
         env:
-          COMMIT_REFERENCE_CREATED: ${{ steps.release.outputs.commit_reference_created }}
-          CONTRACT_REFERENCE_CREATED: ${{ steps.release.outputs.contract_reference_created }}
-          DOCKER_CONFIG: ${{ runner.temp }}/docker-config-node22-${{ github.run_id }}-${{ github.run_attempt }}
-          PUBLISHED_DIGEST: ${{ steps.release.outputs.digest }}
+          RELEASE_IMAGE: ${{ steps.release.outputs.image }}
+          RELEASE_CONTRACT_TAG: ${{ steps.release.outputs.contract_tag }}
+          RELEASE_COMMIT_TAG: ${{ steps.release.outputs.commit_tag }}
+          RELEASE_DIGEST: ${{ steps.release.outputs.digest }}
+          RELEASE_RUNTIME_VERSION: ${{ steps.release.outputs.runtime_version }}
+          RELEASE_BASE_DIGEST: ${{ steps.release.outputs.base_digest }}
+          RELEASE_LOGICAL_SIZE: ${{ steps.release.outputs.logical_size_bytes }}
         shell: bash
         run: |
           set -euo pipefail
-          docker image rm "$LOCAL_IMAGE" >/dev/null 2>&1 || true
-          if [[ "$COMMIT_REFERENCE_CREATED" == "true" ]]; then
-            docker image rm "${PUBLISHED_IMAGE}:sha-${GITHUB_SHA}" >/dev/null 2>&1 || true
-          fi
-          if [[ "$CONTRACT_REFERENCE_CREATED" == "true" ]]; then
-            docker image rm "${PUBLISHED_IMAGE}:${IMAGE_VERSION}" >/dev/null 2>&1 || true
-          fi
-          if [[ -n "$PUBLISHED_DIGEST" ]]; then
-            docker image rm "${PUBLISHED_IMAGE}@${PUBLISHED_DIGEST}" >/dev/null 2>&1 || true
-          fi
-          case "$DOCKER_CONFIG" in
-            "$RUNNER_TEMP"/*) rm -rf -- "$DOCKER_CONFIG" ;;
-            *) echo "Refusing to remove Docker config outside RUNNER_TEMP" >&2; exit 1 ;;
-          esac
+          record="${RUNNER_TEMP}/${{ matrix.profile }}.record"
+          {
+            printf 'profile=%q\n' "${{ matrix.profile }}"
+            printf 'image=%q\n' "$RELEASE_IMAGE"
+            printf 'contract_tag=%q\n' "$RELEASE_CONTRACT_TAG"
+            printf 'commit_tag=%q\n' "$RELEASE_COMMIT_TAG"
+            printf 'digest=%q\n' "$RELEASE_DIGEST"
+            printf 'runtime_version=%q\n' "$RELEASE_RUNTIME_VERSION"
+            printf 'base_digest=%q\n' "$RELEASE_BASE_DIGEST"
+            printf 'logical_size_bytes=%q\n' "$RELEASE_LOGICAL_SIZE"
+          } > "$record"
+          test -s "$record"
+          echo "path=$record" >> "$GITHUB_OUTPUT"
 
-  python312:
-    name: Build, validate and publish Python 3.12
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, linux, x64, proart]
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image: ${{ steps.release.outputs.image }}
-      contract_tag: ${{ steps.release.outputs.contract_tag }}
-      commit_tag: ${{ steps.release.outputs.commit_tag }}
-      digest: ${{ steps.release.outputs.digest }}
-      runtime_version: ${{ steps.release.outputs.runtime_version }}
-      base_digest: ${{ steps.release.outputs.base_digest }}
-      logical_size_bytes: ${{ steps.release.outputs.logical_size_bytes }}
-    env:
-      LOCAL_IMAGE: ci-python312:${{ github.run_id }}-${{ github.run_attempt }}
-      PUBLISHED_IMAGE: ghcr.io/experto-hub/ci-python312
-      BASE_DIGEST: sha256:0f5b26b9518d002b6173fd61daad821fa340635ebfec5bba471013f9ca114579
-      IMAGE_VERSION: "1"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Upload release record
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          persist-credentials: false
-
-      - name: Derive deterministic source metadata
-        id: metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          image_created="$(git show --no-show-signature --format=%cI -s "$GITHUB_SHA")"
-          test -n "$image_created"
-          echo "image_created=$image_created" >> "$GITHUB_OUTPUT"
-
-      - name: Build image
-        env:
-          IMAGE_CREATED: ${{ steps.metadata.outputs.image_created }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker build \
-            --build-arg "IMAGE_SOURCE=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            --build-arg "IMAGE_REVISION=${GITHUB_SHA}" \
-            --build-arg "IMAGE_CREATED=${IMAGE_CREATED}" \
-            --build-arg "IMAGE_VERSION=${IMAGE_VERSION}" \
-            --tag "$LOCAL_IMAGE" \
-            python312
-
-      - name: Verify local image contract
-        env:
-          IMAGE_CREATED: ${{ steps.metadata.outputs.image_created }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash scripts/verify-image-contract.sh \
-            python312 \
-            "$LOCAL_IMAGE" \
-            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            "$GITHUB_SHA" \
-            "$IMAGE_CREATED" \
-            "$IMAGE_VERSION" \
-            "$BASE_DIGEST"
-
-      - name: Publish and prove registry image
-        id: release
-        env:
-          DOCKER_CONFIG: ${{ runner.temp }}/docker-config-python312-${{ github.run_id }}-${{ github.run_attempt }}
-          GHCR_TOKEN: ${{ github.token }}
-          IMAGE_CREATED: ${{ steps.metadata.outputs.image_created }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash scripts/release-image.sh \
-            python312 \
-            "Python 3.12" \
-            "$LOCAL_IMAGE" \
-            "$PUBLISHED_IMAGE" \
-            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            "$GITHUB_SHA" \
-            "$IMAGE_CREATED" \
-            "$IMAGE_VERSION" \
-            "$BASE_DIGEST"
+          name: ci-image-release-record-${{ matrix.profile }}-${{ github.sha }}
+          path: ${{ steps.record.outputs.path }}
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Clean up job-owned Docker state
         if: always()
         env:
           COMMIT_REFERENCE_CREATED: ${{ steps.release.outputs.commit_reference_created }}
           CONTRACT_REFERENCE_CREATED: ${{ steps.release.outputs.contract_reference_created }}
-          DOCKER_CONFIG: ${{ runner.temp }}/docker-config-python312-${{ github.run_id }}-${{ github.run_attempt }}
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
           PUBLISHED_DIGEST: ${{ steps.release.outputs.digest }}
         shell: bash
         run: |
@@ -323,72 +300,34 @@ jobs:
   release-manifest:
     name: Publish release manifest artifact
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: [node22, python312]
+    needs: [publish]
     runs-on: [self-hosted, linux, x64, proart]
     timeout-minutes: 5
     permissions:
       contents: read
-    env:
-      NODE_IMAGE: ${{ needs.node22.outputs.image }}
-      NODE_CONTRACT_TAG: ${{ needs.node22.outputs.contract_tag }}
-      NODE_COMMIT_TAG: ${{ needs.node22.outputs.commit_tag }}
-      NODE_DIGEST: ${{ needs.node22.outputs.digest }}
-      NODE_RUNTIME_VERSION: ${{ needs.node22.outputs.runtime_version }}
-      NODE_BASE_DIGEST: ${{ needs.node22.outputs.base_digest }}
-      NODE_LOGICAL_SIZE: ${{ needs.node22.outputs.logical_size_bytes }}
-      PYTHON_IMAGE: ${{ needs.python312.outputs.image }}
-      PYTHON_CONTRACT_TAG: ${{ needs.python312.outputs.contract_tag }}
-      PYTHON_COMMIT_TAG: ${{ needs.python312.outputs.commit_tag }}
-      PYTHON_DIGEST: ${{ needs.python312.outputs.digest }}
-      PYTHON_RUNTIME_VERSION: ${{ needs.python312.outputs.runtime_version }}
-      PYTHON_BASE_DIGEST: ${{ needs.python312.outputs.base_digest }}
-      PYTHON_LOGICAL_SIZE: ${{ needs.python312.outputs.logical_size_bytes }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download release records
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ci-image-release-record-*-${{ github.sha }}
+          path: ${{ runner.temp }}/ci-image-release-records
+          merge-multiple: true
+
       - name: Generate release manifest
         id: manifest
         shell: bash
         run: |
           set -euo pipefail
-          for required_name in \
-            NODE_IMAGE NODE_CONTRACT_TAG NODE_COMMIT_TAG NODE_DIGEST NODE_RUNTIME_VERSION NODE_BASE_DIGEST NODE_LOGICAL_SIZE \
-            PYTHON_IMAGE PYTHON_CONTRACT_TAG PYTHON_COMMIT_TAG PYTHON_DIGEST PYTHON_RUNTIME_VERSION PYTHON_BASE_DIGEST PYTHON_LOGICAL_SIZE; do
-            if [[ -z "${!required_name:-}" ]]; then
-              echo "Required release output is missing: ${required_name}" >&2
-              exit 1
-            fi
-          done
-          [[ "$NODE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$PYTHON_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$NODE_BASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$PYTHON_BASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$NODE_LOGICAL_SIZE" =~ ^[0-9]+$ ]]
-          [[ "$PYTHON_LOGICAL_SIZE" =~ ^[0-9]+$ ]]
           manifest="${RUNNER_TEMP}/ci-images-release-${GITHUB_SHA}.json"
-          printf '%s\n' \
-            '{' \
-            "  \"sourceRevision\": \"${GITHUB_SHA}\"," \
-            '  "images": {' \
-            '    "node22": {' \
-            "      \"image\": \"${NODE_IMAGE}\"," \
-            "      \"contractTag\": \"${NODE_CONTRACT_TAG}\"," \
-            "      \"commitTag\": \"${NODE_COMMIT_TAG}\"," \
-            "      \"digest\": \"${NODE_DIGEST}\"," \
-            "      \"runtimeVersion\": \"${NODE_RUNTIME_VERSION}\"," \
-            "      \"baseDigest\": \"${NODE_BASE_DIGEST}\"," \
-            "      \"logicalSizeBytes\": ${NODE_LOGICAL_SIZE}" \
-            '    },' \
-            '    "python312": {' \
-            "      \"image\": \"${PYTHON_IMAGE}\"," \
-            "      \"contractTag\": \"${PYTHON_CONTRACT_TAG}\"," \
-            "      \"commitTag\": \"${PYTHON_COMMIT_TAG}\"," \
-            "      \"digest\": \"${PYTHON_DIGEST}\"," \
-            "      \"runtimeVersion\": \"${PYTHON_RUNTIME_VERSION}\"," \
-            "      \"baseDigest\": \"${PYTHON_BASE_DIGEST}\"," \
-            "      \"logicalSizeBytes\": ${PYTHON_LOGICAL_SIZE}" \
-            '    }' \
-            '  }' \
-            '}' > "$manifest"
-          test -s "$manifest"
+          bash scripts/generate-release-manifest.sh \
+            "$GITHUB_SHA" \
+            "${RUNNER_TEMP}/ci-image-release-records" \
+            "$manifest"
           echo "path=$manifest" >> "$GITHUB_OUTPUT"
 
       - name: Upload release manifest

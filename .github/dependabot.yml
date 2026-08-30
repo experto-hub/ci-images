@@ -18,6 +18,24 @@ updates:
       timezone: Europe/Warsaw
     open-pull-requests-limit: 2
 
+  - package-ecosystem: docker
+    directory: /java21
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: docker
+    directory: /java25
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 2
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
