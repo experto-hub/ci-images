@@ -1,15 +1,7 @@
 name: Build and publish CI images
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/build-images.yml
-      - node22/**
-      - python312/**
-      - python314/**
-      - java21/**
-      - java25/**
-      - scripts/**
+  pull_request_target:
   push:
     branches:
       - main
@@ -33,7 +25,10 @@ concurrency:
 jobs:
   validate:
     name: Validate ${{ matrix.display_name }}
-    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    if: >-
+      (github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name != 'pull_request_target' && github.ref != 'refs/heads/main')
     runs-on: [self-hosted, linux, x64, proart]
     timeout-minutes: 15
     permissions:
@@ -70,18 +65,21 @@ jobs:
     env:
       LOCAL_IMAGE: ${{ matrix.local_name }}:${{ github.run_id }}-${{ github.run_attempt }}
       IMAGE_VERSION: "1"
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
 
       - name: Derive deterministic source metadata
         id: metadata
         shell: bash
         run: |
           set -euo pipefail
-          image_created="$(git show --no-show-signature --format=%cI -s "$GITHUB_SHA")"
+          image_created="$(git show --no-show-signature --format=%cI -s "$SOURCE_SHA")"
           test -n "$image_created"
           echo "image_created=$image_created" >> "$GITHUB_OUTPUT"
 
@@ -93,7 +91,7 @@ jobs:
           set -euo pipefail
           docker build \
             --build-arg "IMAGE_SOURCE=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            --build-arg "IMAGE_REVISION=${GITHUB_SHA}" \
+            --build-arg "IMAGE_REVISION=${SOURCE_SHA}" \
             --build-arg "IMAGE_CREATED=${IMAGE_CREATED}" \
             --build-arg "IMAGE_VERSION=${IMAGE_VERSION}" \
             --tag "$LOCAL_IMAGE" \
@@ -109,7 +107,7 @@ jobs:
             "${{ matrix.profile }}" \
             "$LOCAL_IMAGE" \
             "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            "$GITHUB_SHA" \
+            "$SOURCE_SHA" \
             "$IMAGE_CREATED" \
             "$IMAGE_VERSION" \
             "${{ matrix.base_digest }}"
@@ -130,9 +128,33 @@ jobs:
           set -euo pipefail
           docker image rm "$LOCAL_IMAGE" >/dev/null 2>&1 || true
 
+  quality:
+    name: Quality
+    if: always() && github.event_name == 'pull_request_target'
+    needs: [validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Enforce trusted pull request validation
+        env:
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::Fork pull requests cannot execute on the ProArt self-hosted runner."
+            exit 1
+          fi
+          if [[ "$VALIDATE_RESULT" != "success" ]]; then
+            echo "::error::Image contract validation result: $VALIDATE_RESULT"
+            exit 1
+          fi
+
   publish:
     name: Build, validate and publish ${{ matrix.display_name }}
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request_target' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, proart]
     timeout-minutes: 15
     permissions:
@@ -250,6 +272,30 @@ jobs:
             "$IMAGE_VERSION" \
             "$BASE_DIGEST"
 
+      - name: Verify public package visibility
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PACKAGE_NAME: ${{ matrix.local_name }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const { data: packageMetadata } = await github.request(
+              "GET /orgs/{org}/packages/{package_type}/{package_name}",
+              {
+                org: context.repo.owner,
+                package_type: "container",
+                package_name: process.env.PACKAGE_NAME,
+              },
+            );
+
+            if (packageMetadata.visibility !== "public") {
+              throw new Error(
+                `${context.repo.owner}/${process.env.PACKAGE_NAME} is ` +
+                  `${packageMetadata.visibility}, expected public. ` +
+                  "Set the package visibility to Public and rerun this workflow.",
+              );
+            }
+
       - name: Create release record
         id: record
         env:
@@ -312,7 +358,7 @@ jobs:
 
   release-manifest:
     name: Publish release manifest artifact
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request_target' && github.ref == 'refs/heads/main'
     needs: [publish]
     runs-on: [self-hosted, linux, x64, proart]
     timeout-minutes: 5

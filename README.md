@@ -1,6 +1,6 @@
 # Reusable CI images
 
-This repository owns five narrow execution toolchains for trusted private Linux x86_64 CI jobs. It does not own application dependencies, dependency caches, source code, browsers, Docker access or repository-specific configuration.
+This repository owns five narrow execution toolchains for trusted Linux x86_64 CI jobs. It does not own application dependencies, dependency caches, source code, browsers, Docker access or repository-specific configuration.
 
 ## Image contracts
 
@@ -14,7 +14,7 @@ This repository owns five narrow execution toolchains for trusted private Linux 
 
 All five images are `linux/amd64` only and use `/workspace` as their working directory. The repository intentionally does not publish `latest`. The Java images deliberately leave Maven version ownership to each consumer's checked-in Maven Wrapper.
 
-The images run as root. GitHub Actions controls the mounted workspace ownership, and introducing another user would add checkout and write-permission failure modes without creating a meaningful isolation boundary in this trusted private-CI model. Consumers must not mount the Docker socket into these images; access to the host daemon is effectively host-root access.
+The images run as root. GitHub Actions controls the mounted workspace ownership, and introducing another user would add checkout and write-permission failure modes without creating a meaningful isolation boundary in this trusted-CI model. Consumers must not mount the Docker socket into these images; access to the host daemon is effectively host-root access.
 
 ## Release identity
 
@@ -29,19 +29,17 @@ Example consumer configuration:
 ```yaml
 permissions:
   contents: read
-  packages: read
 
 jobs:
   verify:
     runs-on: [self-hosted, linux, x64, proart]
     container:
       image: ghcr.io/experto-hub/ci-node22@sha256:<digest-from-the-release-manifest>
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The packages are private. A consumer repository needs explicit package access plus `packages: read`; do not replace that boundary with a long-lived personal access token.
+The packages are public and can be pulled anonymously. Consumers do not need package access, `packages: read`, registry credentials or a long-lived personal access token.
+
+GitHub creates a new container package as private. The first publication of a new image profile therefore publishes and proves the image, then deliberately fails the public-visibility gate. An organization owner must allow public package creation in the organization package settings, change that package to **Public**, optionally disable public package creation again, and rerun the same workflow. The package visibility transition is permanent: GitHub does not allow a public package to become private again.
 
 ## Build and publication model
 
@@ -57,10 +55,17 @@ For each image, the workflow:
 4. pulls that digest back and runs the same contract verifier against it;
 5. confirms the source revision is still the current `main` head;
 6. advances `:1` and asserts that both tags resolve to the candidate digest;
-7. reports the exact image, toolchain versions, tags, digest, base digest and logical size;
-8. uploads a small JSON release manifest artifact after all five images succeed.
+7. verifies through the GitHub Packages API that the package is public;
+8. reports the exact image, toolchain versions, tags, digest, base digest and logical size;
+9. uploads a small JSON release manifest artifact after all five images succeed.
 
 The workflow concurrency group serializes runs for the same ref. The explicit current-`main` check also prevents an old run of this hardened workflow from regressing the moving `:1` tag. Local scratch tags and temporary Docker authentication under `RUNNER_TEMP` are removed after every job; the shared layer cache is deliberately retained.
+
+## Pull request security
+
+The repository is public, but its ProArt runners are not a public execution service. Pull request validation uses the workflow definition from the protected `main` branch and executes the proposed revision only when the pull request head belongs to this repository. Fork pull requests fail the stable `Quality` check without checking out or executing fork content on a self-hosted runner. A maintainer may review an external contribution as data and recreate an accepted change on a branch in this repository.
+
+The `main` branch is the only publication branch. It is protected against direct pushes, force pushes and deletion; changes are delivered through pull requests with the `Quality` check required. A separate long-lived `develop` branch is intentionally not used.
 
 The workflow run summary and JSON artifact are the authoritative release records. Documentation does not duplicate live registry digests.
 
