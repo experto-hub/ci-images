@@ -59,7 +59,7 @@ For each image, the workflow:
 8. reports the exact image, toolchain versions, tags, digest, base digest and logical size;
 9. uploads a small JSON release manifest artifact after all five images succeed.
 
-The workflow concurrency group serializes runs for the same ref. The explicit current-`main` check also prevents an old run of this hardened workflow from regressing the moving `:1` tag. Local scratch tags and temporary Docker authentication under `RUNNER_TEMP` are removed after every job; the shared layer cache is deliberately retained.
+Workflow concurrency serializes each pull request independently by number and keeps main publication in a separate ref-based group. The explicit current-`main` check also prevents an old run of this hardened workflow from regressing the moving `:1` tag. Local scratch tags and temporary Docker authentication under `RUNNER_TEMP` are removed after every job; the shared layer cache is deliberately retained.
 
 ## Pull request security
 
