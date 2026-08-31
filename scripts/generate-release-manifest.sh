@@ -9,7 +9,7 @@ fi
 source_revision="$1"
 record_directory="$2"
 manifest_path="$3"
-profiles=(node22 python312 java21 java25)
+profiles=(node22 python312 python314 java21 java25)
 
 if [[ ! "$source_revision" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Invalid source revision: ${source_revision}" >&2
