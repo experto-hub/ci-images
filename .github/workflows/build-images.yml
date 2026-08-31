@@ -2,6 +2,9 @@ name: Build and publish CI images
 
 on:
   pull_request_target:
+    branches:
+      - develop
+      - main
   push:
     branches:
       - main
@@ -138,13 +141,19 @@ jobs:
     steps:
       - name: Enforce trusted pull request validation
         env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           VALIDATE_RESULT: ${{ needs.validate.result }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
             echo "::error::Fork pull requests cannot execute on the ProArt self-hosted runner."
+            exit 1
+          fi
+          if [[ "$BASE_REF" == "main" && "$HEAD_REF" != "develop" ]]; then
+            echo "::error::Release pull requests to main must originate from develop."
             exit 1
           fi
           if [[ "$VALIDATE_RESULT" != "success" ]]; then
