@@ -67,7 +67,7 @@ The repository is public, but its ProArt runners are not a public execution serv
 
 ## Branch and release model
 
-`develop` is the default integration branch. Feature and dependency pull requests target `develop`. Both `develop` and `main` are protected against direct pushes, force pushes and deletion. They require the stable `Quality` check, resolved review conversations and one approving review from the owners declared in `.github/CODEOWNERS`. A new push dismisses a stale approval, and the last pusher cannot provide the required approval.
+`develop` is the default integration branch. Feature and dependency pull requests target `develop`. Both `develop` and `main` are protected against direct pushes, force pushes and deletion. They require the stable `Quality` check and resolved review conversations. The owners declared in `.github/CODEOWNERS` receive review requests, but an approving review is not a merge requirement while the organization has only one maintainer. Required Code Owner approval can be enabled without changing the repository model after a second maintainer joins the team.
 
 All pull requests use merge commits. Production releases use a pull request whose head is exactly `develop` and whose base is `main`. The `Quality` policy rejects every other pull request source for `main`. This preserves `develop` as an ancestor of `main`; the protected `develop` branch must not be deleted after release. Publishing remains exclusive to the resulting push on `main`.
 
