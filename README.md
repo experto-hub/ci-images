@@ -1,5 +1,8 @@
 # Reusable CI images
 
+> [!IMPORTANT]
+> Publication ownership moved to [`experto-hub/experto-engineering/ci/execution/images`](https://github.com/experto-hub/experto-engineering/tree/develop/ci/execution/images) on 2026-09-02. This repository is retained only as historical migration context. Package coordinates did not change, and existing digest-pinned consumers remain valid. Make all future image, release, and runbook changes in `experto-engineering`.
+
 This repository owns five narrow execution toolchains for trusted Linux x86_64 CI jobs. It does not own application dependencies, dependency caches, source code, browsers, Docker access or repository-specific configuration.
 
 ## Image contracts
